@@ -92,5 +92,8 @@ def setmodelparams():
     modelParams['rg']=25.0e-6
     modelParams['rho_O']=7.5e4
     modelParams['c_0']=1.406e5 #mol/m^3
+    modelParams['c_0_feo']=1.406e5
+    modelParams['c_0_fe']=1.406e5
     modelParams['c_0_fe2o3']=7.03e4
+    modelParams['c_0_fe3o4']=4.687e4
     return(modelParams)

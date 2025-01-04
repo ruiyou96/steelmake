@@ -237,6 +237,14 @@ if(__name__ == "__main__"):
     eps=np.zeros(ncells)
     knu_k0=np.zeros(ncells)
     
+    avlb=np.zeros(ncells)
+    avlb_1=np.zeros(ncells)
+    csmp=np.zeros(ncells)
+    alpha=np.zeros(ncells)
+    alpha_1=np.zeros(ncells)
+    f_alpha=np.zeros(ncells)
+
+    
     cH2_init=np.zeros(ncells)
     cH_init=np.zeros(ncells)
     cHp_init=np.zeros(ncells)
@@ -284,7 +292,7 @@ if(__name__ == "__main__"):
     
     #Initialize Reaction Source Array
     impl_rxnsrc=np.zeros((5,ncells))
-    
+    s_src=np.zeros((7,ncells))
     
     #Define Grid/ TIME STEP
     plo=0.0 #LOW
@@ -309,10 +317,11 @@ if(__name__ == "__main__"):
     if run_option == 1:
         for c in range(ncells):
             cFeO[c] = mp['c_0']
+            x_FeO[c]=1.0
     else:
         for c in range(ncells):
             cFe2O3[c] = mp['c_0_fe2o3']
-        
+            x_Fe2O3[c]=1.0
         
     # Initialize lists to store time and conversion degree values
     time_values = []
@@ -395,13 +404,21 @@ if(__name__ == "__main__"):
 
 
 #-------------porosity--------------
+           
+#            if f[c] == 1.0:
+#                eps[c] = (mp['rho_Fe'] - mp['rho_FeO']) / mp['rho_FeO']
+#            elif f[c] == 0.0:
+#                eps[c] = 0.01 #initial porosity
+#            elif 1.0 > f[c] > 0.0:
+#                eps[c] = f[c] * (mp['rho_Fe'] - mp['rho_FeO']) / mp['rho_FeO']
+                
+            if run_option != 1:
+                eps[c] =(mp['rho_Fe']*x_Fe[c]+mp['rho_FeO']*x_FeO[c]+ mp['rho_Fe2O3']*x_Fe2O3[c]+mp['rho_Fe3O4']*x_Fe3O4[c])/mp['rho_Fe2O3']-1.0+0.01
             
-            if f[c] == 1.0:
-                eps[c] = (mp['rho_Fe'] - mp['rho_FeO']) / mp['rho_FeO']
-            elif f[c] == 0.0:
-                eps[c] = 0.01 #initial porosity
-            elif 1.0 > f[c] > 0.0:
-                eps[c] = f[c] * (mp['rho_Fe'] - mp['rho_FeO']) / mp['rho_FeO']
+            if run_option == 1:
+                eps[c] = (mp['rho_Fe']*x_Fe[c]+mp['rho_FeO']*x_FeO[c])/mp['rho_FeO']-1.0+0.01
+          #  print(eps[c])
+
 
 
 #-------------D_EFF--------------
@@ -413,7 +430,7 @@ if(__name__ == "__main__"):
             #print("knu_k0",knu_k0[c])
 
             D_knu_H2O[c]= 4.0/3.0*knu_k0[c] *np.sqrt(8.0*Temp[c]*constants.R/np.pi/mp['M_H2O']/1000)
-                   
+            
             D_knu_H2[c]= 4.0/3.0*knu_k0[c] *np.sqrt(8.0*Temp[c]*constants.R/np.pi/mp['M_H2']/1000)
             #print("D_knu_k0",D_knu_H2[c])
 
@@ -424,9 +441,9 @@ if(__name__ == "__main__"):
             Deff_H2[c]=D_knu_H2[c]
             Deff_H2O[c]=D_knu_H2O[c]
 
-            
-            
-            
+
+
+
             #print("tau",mp['tau'])
 
         #solid will mostly provide the thermal mass
@@ -452,74 +469,155 @@ if(__name__ == "__main__"):
 #--------------------------------------------------
 
 
-        if run_option != 1:
+ #----------------------gas------------------------
+        if run_option == 1:
+            #species concentration
+            cH2= solver(cH2_init, ncells, t, dx, dt, -Deff_H2, -impl_rxnsrc[0,:], cH2*eps, k_m)
+            cH2O = solver(cH2O_init, ncells, t, dx, dt, -Deff_H2O, impl_rxnsrc[0,:], cH2O*eps, k_m)
         
+        
+        if run_option != 1:
+            cH2= solver(cH2_init, ncells, t, dx, dt, -Deff_H2, -(impl_rxnsrc[0,:]+impl_rxnsrc[1,:]+impl_rxnsrc[3,:]), cH2*eps, k_m)
+            cH2O = solver(cH2O_init, ncells, t, dx, dt, -Deff_H2O, (impl_rxnsrc[0,:]+impl_rxnsrc[1,:]+impl_rxnsrc[3,:]), cH2O*eps, k_m)
+        
+        
+
+ #----------------------solid------------------------
+
+        if run_option != 1:
+
+
+#No.1
 #---------3Fe2O3 + H2 → 2Fe3O4 + H2O--------
             kH2_1=166.37*np.exp(-89130/constants.R/Temp)
-            #rrate=kH2_1*cH2*(cFe2O3**3.0)
-            rrate=kH2_1*cH2*cFe2O3
-            impl_rxnsrc[1,:]=rrate
-            cH2= solver(cH2_init, ncells, t, dx, dt, -Deff_H2, -impl_rxnsrc[1,:], cH2*eps, k_m)
-            cH2O = solver(cH2O_init, ncells, t, dx, dt, -Deff_H2O, impl_rxnsrc[1,:], cH2O*eps, k_m)
-            cFe3O4[:] += 2.0*impl_rxnsrc[1,:]*dt
-            cFe2O3[:] -= 3.0*impl_rxnsrc[1,:]*dt
+            #rrate=kH2_1*cH2*cFe2O3
+            
 
+            alpha_1[:]=np.minimum(np.maximum((mp['c_0_fe2o3'] - cFe2O3[:])/mp['c_0_fe2o3'], 1e-5), 1 - 1e-5)
+            
+           # print("alpha_1",alpha_1) #start from 0
+            f_alpha[:] = 2.0 * (1.0 - alpha_1[:]) * (-np.log(1.0 - alpha_1[:]))**(1.0/2.0)
+            #print(f_alpha) # 0.2
+          
+          
+           # f_alpha[:]=1.0
+            impl_rxnsrc[1,:]=kH2_1*cH2[:]*f_alpha[:]#*mp['c_0_fe2o3']
+    
+    
+            s_src[1,:]=kH2_1*cH2[:]*cFe2O3[:]* 2.0*(-np.log((cFe2O3[:]-1e-5)/mp['c_0_fe2o3']))**(1.0/2.0)
+            #s_src[2,:]=kH2_1*cH2[:]*cFe3O4[:]* 2.0*(-np.log(cFe3O4[:]/mp['c_0_fe3o4']))**(1.0/2.0)
+            
+            cFe3O4[:] += 2.0*s_src[1,:]*dt
+            cFe2O3[:] -= 3.0*s_src[1,:]*dt
+            cFe2O3[:]= np.maximum(cFe2O3[:], 2e-5)
+            #print(impl_rxnsrc[1,:])
 
+            
+          #  print("cFe3O4",cFe3O4)
+          #  print("cFe2O3",cFe2O3)
+            
         
-#---------Fe3O4 + 4H2 → 3Fe + 4H2O--------
-            kH2_2=1.46e5*np.exp(-70410/constants.R/Temp)
-            rrate=kH2_2*cH2**4.0*cFe3O4
-            #rrate=kH2_2*cH2*cFe3O4
-            impl_rxnsrc[2,:]=rrate
-            cH2= solver(cH2_init, ncells, t, dx, dt, -Deff_H2, -impl_rxnsrc[2,:], cH2*eps, k_m)
-            cH2O = solver(cH2O_init, ncells, t, dx, dt, -Deff_H2O, impl_rxnsrc[2,:], cH2O*eps, k_m)
-            cFe[:] += 3.0*impl_rxnsrc[2,:]*dt
-            cFe3O4[:] -= impl_rxnsrc[2,:]*dt
+##---------Fe3O4 + 4H2 → 3Fe + 4H2O--------
+#            kH2_2=1.46e5*np.exp(-70410/constants.R/Temp)
+#           # rrate=kH2_2*cH2**4.0*cFe3O4
+#            rrate=kH2_2*cH2*cFe3O4
+#            impl_rxnsrc[2,:]=rrate
+#            cFe[:] += 3.0*impl_rxnsrc[2,:]*dt
+#            cFe3O4[:] -= impl_rxnsrc[2,:]*dt
         
 
+#No.3
+#---------Fe3O4 + H2 → 3FeO + H2O--------
 
-#---------Fe3O4 + (1−4x)H2 → 3Fe(1−x)O + (1−4x)H2O--------
+            kH2_3=11.0*np.exp(-61505/constants.R/Temp)
+            #kH2_3=600.0*np.exp(-77300/constants.R/Temp)
+            #avaliable fe3o4
+            
+            # avlb cFe3O4
+            avlb[:]=alpha_1[:]/mp['c_0_fe2o3']*mp['c_0_fe3o4']
+            avlb_1[:]=avlb[:]
 
-            kH2_3=600.0*np.exp(-77300/constants.R/Temp)
-            rrate=kH2_3*cH2*cFe3O4
-            impl_rxnsrc[3,:]=rrate
-            cH2= solver(cH2_init, ncells, t, dx, dt, -Deff_H2, -impl_rxnsrc[3,:], cH2*eps, k_m)
-            cH2O = solver(cH2O_init, ncells, t, dx, dt, -Deff_H2O, impl_rxnsrc[3,:], cH2O*eps, k_m)
-            cFeO[:] += 3.0*impl_rxnsrc[3,:]*dt
-            cFe3O4[:] -= impl_rxnsrc[3,:]*dt
+            
+            s_src[3,:]=kH2_3*cH2*3.0* mp['c_0_fe3o4']**(1.0/3.0)*cFe3O4[:]**(2.0 / 3.0)
+            #s_src[4,:]=kH2_3*cH2*3.0* mp['c_0_feo']**(1.0/3.0)*cFeO[:]**(2.0 / 3.0)
+          
+            cFeO[:] += 3.0*s_src[3,:]*dt
+            cFe3O4[:] -= s_src[3,:]*dt
+            cFe3O4[:]= np.maximum(cFe3O4[:], 0)
+           # print("cFe3O4_1",cFe3O4)
+           
+           
+            csmp[:]=avlb[:]-cFe3O4[:]
+            alpha[:]=np.minimum(np.maximum(np.abs(csmp[:]/avlb[:]), 1e-5), 1 - 1e-5)
+         #   print("avlb",avlb)
+         #   print("csmp",csmp)
+#            print("cFe3O4",cFe3O4)
+         #   print("alpha",alpha)
+            for c in range(ncells):
+                if alpha[c] > 0.8:
+                    f_alpha[c] = (1.0 - alpha[c])**(2.0 / 3.0)
+                else:
+                    f_alpha[c] = 1.0 - alpha[c]
+            
+              # f_alpha[:]=1.0
+            impl_rxnsrc[3,:]=kH2_3*cH2*f_alpha[:]#*cFe3O4
+            
+            
+           
+           
+           
+#
+##---------Fe2O3 + H2 → 2FeO + H2O--------
+#            kH2_4=80*np.exp(-66516/constants.R/Temp)
+#            rrate=kH2_4*cH2*cFe2O3
+#            impl_rxnsrc[4,:]=rrate
+#            cFeO[:] += 2.0*impl_rxnsrc[4,:]*dt
+#            cFe2O3[:] -= impl_rxnsrc[4,:]*dt
+#        
+        
 
-
-
-#---------Fe2O3 + H2 → 2FeO + H2O--------
-            kH2_4=80*np.exp(-66516/constants.R/Temp)
-            rrate=kH2_4*cH2*cFe2O3
-            impl_rxnsrc[4,:]=rrate
-            cH2= solver(cH2_init, ncells, t, dx, dt, -Deff_H2, -impl_rxnsrc[4,:], cH2*eps, k_m)
-            cH2O = solver(cH2O_init, ncells, t, dx, dt, -Deff_H2O, impl_rxnsrc[4,:], cH2O*eps, k_m)
-            cFeO[:] += 2.0*impl_rxnsrc[4,:]*dt
-            cFe2O3[:] -= impl_rxnsrc[4,:]*dt
         
 
         # Run only the last reaction if the input is 1
         if run_option == 1 or run_option != 1:
-        
+ 
+#No.5
 #---------Fe(1−x)O + H2 → (1−x)Fe + H2O--------
             #kh2 in m/s
-            kH2=mp['k0']*np.exp(-mp['Ea']/constants.R/Temp)
+            #kH2=mp['k0']*np.exp(-mp['Ea']/constants.R/Temp)
+            kH2=20.0*np.exp(-63597/constants.R/Temp)
+
+            
+            avlb[:]= (avlb[:]-cFe3O4[:])/mp['c_0_fe3o4']*mp['c_0_feo']
+
+            
+            #s_src[5,:]=kH2*cH2*3.0* mp['c_0_fe']**(1.0/3.0)*cFe[:]**(2.0 / 3.0)
+            s_src[6,:]=kH2*cH2*3.0* mp['c_0_feo']**(1.0/3.0)*cFeO[:]**(2.0 / 3.0)
+        
+            cFe[:] += s_src[6,:]*dt
+            cFeO[:] -= s_src[6,:]*dt
+            cFeO[:]= np.maximum(cFeO[:], 0)
+            #print("cFeO_1",cFeO)
+            
+            
+            csmp[:]=avlb[:]-cFeO[:]
+            alpha[:]=np.minimum(np.maximum(np.abs(csmp[:]/avlb[:]), 1e-5),1 - 1e-5 )
+          #  print("avlb5",avlb)
+          #  print("csmp5",csmp)
+#            print("cFeO",cFeO)
+         #   print("alpha5",alpha)
+            for c in range(ncells):
+                if alpha[c] > 0.8:
+                    f_alpha[c] = (1 - alpha[c])**(2.0 / 3.0)
+                else:
+                    f_alpha[c] = (1 - alpha[c])**(1.0 / 2.0)
+                
+            #f_alpha[:]=1.0
             #print("KH2",kH2) =0.01
             ##Reaction Source
-            rrate=kH2*cH2*cFeO #/mp['rg']
-            impl_rxnsrc[0,:]=rrate
+            impl_rxnsrc[0,:]=kH2*cH2*f_alpha[:]
         
-            #species concentration
-            cH2= solver(cH2_init, ncells, t, dx, dt, -Deff_H2, -impl_rxnsrc[0,:], cH2*eps, k_m)
-            cH2O = solver(cH2O_init, ncells, t, dx, dt, -Deff_H2O, impl_rxnsrc[0,:], cH2O*eps, k_m)
-            cFe[:] += impl_rxnsrc[0,:]*dt
-            cFeO[:] -= impl_rxnsrc[0,:]*dt
-            #cFeO[:]=mp['c_0'] - cFe[:]
-        
-            #print("cFe",cFe)
-        
+           # break
         
 #--------------------------------------------------
 #
@@ -602,48 +700,54 @@ if(__name__ == "__main__"):
       
 
         
-        
-#--------------------------------------------------
-#
-#               Shrinking Core Model
-#
-#--------------------------------------------------
+#        
+##--------------------------------------------------
+##
+##               Shrinking Core Model
+##
+##--------------------------------------------------
 
+    #while(t<fintime and nsteps<maxsteps):
+        if(nsteps<maxsteps and r_c[nsteps] <= 0 ):
         # mean over cells
-        cH2_mean = 3.58#np.mean(cH2)
-        cH2O_mean = np.mean(cH2O)
-        kH2_mean=np.mean(kH2)
+            cH2_mean = 3.58#np.mean(cH2)
+            cH2O_mean = np.mean(cH2O)
+            kH2_mean=np.mean(kH2)
         
         #knu_k0=1e-9
-        D_knu_H2_mean= 4.0/3.0*1.086e-7 *np.sqrt(8.0*np.mean(Temp)*constants.R/np.pi/mp['M_H2']/1000)
+            D_knu_H2_mean= 4.0/3.0*1.086e-7 *np.sqrt(8.0*np.mean(Temp)*constants.R/np.pi/mp['M_H2']/1000)
         #print(D_knu_H2_mean)
         
         
         
-        #mass transfer coef. Kg
-        kg_h2= 2.0*(mp['D_H2'])/mp['rg']
-        #kg_h2O= 2.0*(mp['D_H2O'])/mp['rg']
-         
-        # Characteristic time
-        tau_gas_film = mp['c_0'] * mp['rg'] / (3 * b * (kg_h2 * cH2_mean))
-        tau_ash_layer = mp['c_0'] * mp['rg'] ** 2 / (6 * b * (D_knu_H2_mean *cH2_mean))
-        tau_reaction = mp['c_0'] * mp['rg'] / (b * (kH2_mean * cH2_mean ))
-        
+#        #mass transfer coef. Kg
+#        kg_h2= 2.0*(mp['D_H2'])/mp['rg']
+#        #kg_h2O= 2.0*(mp['D_H2O'])/mp['rg']
+#         
+#        # Characteristic time
+#        tau_gas_film = mp['c_0'] * mp['rg'] / (3 * b * (kg_h2 * cH2_mean))
+#        tau_ash_layer = mp['c_0'] * mp['rg'] ** 2 / (6 * b * (D_knu_H2_mean *cH2_mean))
+#        tau_reaction = mp['c_0'] * mp['rg'] / (b * (kH2_mean * cH2_mean ))
+#        
+#
+#        # Conversion for Gas Film Control
+#        X_gas_film = safe_conversion(t, tau_gas_film, 1/3)
+#
+#        # Conversion for Ash Layer Control
+#        X_ash_layer = np.zeros_like(t)
+#        if t <= tau_ash_layer:
+#                X_ash_layer= 1 - 3 * (1 - t / tau_ash_layer)**(2/3) + 2 * (1 - t / tau_ash_layer)
+#        else:
+#                X_ash_layer= 1  # Full conversion after tau_ash_layer
+#
+#        # Conversion for Reaction Control
+#        X_reaction = safe_conversion(t, tau_reaction, 1/3)
+#
+#
 
-        # Conversion for Gas Film Control
-        X_gas_film = safe_conversion(t, tau_gas_film, 1/3)
 
-        # Conversion for Ash Layer Control
-        X_ash_layer = np.zeros_like(t)
-        if t <= tau_ash_layer:
-                X_ash_layer= 1 - 3 * (1 - t / tau_ash_layer)**(2/3) + 2 * (1 - t / tau_ash_layer)
-        else:
-                X_ash_layer= 1  # Full conversion after tau_ash_layer
 
-        # Conversion for Reaction Control
-        X_reaction = safe_conversion(t, tau_reaction, 1/3)
 
-    
 #        # Combination-Rate of change of core radius function
 #        # sphere
 #        dr_c_dt = (b / mp['c_0']) / (
@@ -651,30 +755,32 @@ if(__name__ == "__main__"):
 #        ((mp['rg']  - r_c[nsteps]) * r_c[nsteps]) / (mp['rg'] * ((D_knu_H2_mean *cH2_mean))) +
 #        (1 / (kH2_mean * cH2_mean ))
 #        )
-#        
+#
+
+
         # slab w/o gas film
-        dr_c_dt = (b / mp['c_0']) / (
-        ((mp['rg']  - r_c[nsteps]) * r_c[nsteps]) / (mp['rg'] * ((D_knu_H2_mean *cH2_mean))) +
-        (1 / (kH2_mean * cH2_mean ))
-        )
+            dr_c_dt = (b / mp['c_0']) / (
+                r_c[nsteps] / ((D_knu_H2_mean *cH2_mean)) + (1 / (kH2_mean * cH2_mean ))
+                    )
         
-        r_c[nsteps+1] =  r_c[nsteps]-dr_c_dt * (dt)  #
+            r_c[nsteps+1] =  r_c[nsteps]-dr_c_dt * (dt)  #
         
          
-        if r_c[nsteps+1] <= 0:  # Core radius reaches zero
-            r_c[nsteps+1] = 0  # Cap it at zero
-            break
+            if r_c[nsteps+1] <= 0:  # Core radius reaches zero
+        #else:
+                r_c[nsteps+1] = 0  # Cap it at zero
+           # break
         
-        with open("rc_output.txt", "a") as file:
-            #file.write("Time (s)\tCore Radius (r_c) (m)\n")
-            file.write(f"{t:.6e}\t{r_c[nsteps]:.6e}\n")
-            
+#            with open("rc_output.txt", "a") as file:
+#            #file.write("Time (s)\tCore Radius (r_c) (m)\n")
+#                file.write(f"{t:.6e}\t{r_c[nsteps]:.6e}\n")
+#            
+#
+#            with open("X_reaction.txt", "a") as file:
+#                file.write(f"{t:.6e}\t{X_gas_film:.6e}\t{X_ash_layer:.6e}\t{X_reaction:.6e}\n")
 
-        with open("X_reaction.txt", "a") as file:
-            file.write(f"{t:.6e}\t{X_gas_film:.6e}\t{X_ash_layer:.6e}\t{X_reaction:.6e}\n")
 
-
-        conversion = 1- r_c[nsteps+1]/mp['rg']
+            conversion = 1- r_c[nsteps+1]/mp['rg']
         #conversion= 1 - (((4/3) * np.pi * r_c[nsteps+1]**3 )/ ((4/3) * np.pi * mp['rg']**3))
         
         
@@ -682,7 +788,7 @@ if(__name__ == "__main__"):
 
         # Append the current time and conversion to the list
         #conversion_vs_time.append([t, conversion])
-        scm_f.append(conversion)
+            scm_f.append(conversion)
  
  
 #--------------------------------------------------
@@ -692,21 +798,37 @@ if(__name__ == "__main__"):
 #--------------------------------------------------
 
 
-#        if(nsteps%outputint==0):
-#            
-#            plt.figure()
-#            #plt.title("Fraction of Iron Species")
-#            plt.plot(x, x_Fe, label="x_Fe", color="blue", marker="o", markevery=10)
-#            plt.plot(x, x_FeO, label="x_FeO", color="green", marker="s", markevery=10)
-#            plt.plot(x, x_Fe2O3, label="x_Fe2O3", color="red", marker="^", markevery=10)
-#            plt.plot(x, x_Fe3O4, label="x_Fe3O4", color="purple", marker="x", markevery=10)
-#            plt.xlabel("x(m)")
-#            plt.ylabel("Fraction of Iron Species")
-#            plt.legend()
-#            plt.show()
+        if(nsteps%outputint==0):
+            
+            plt.figure()
+            #plt.title("Fraction of Iron Species")
+            plt.plot(x, x_Fe, label="x_Fe", color="blue", marker="o", markevery=10)
+            plt.plot(x, x_FeO, label="x_FeO", color="green", marker="s", markevery=10)
+            plt.plot(x, x_Fe2O3, label="x_Fe2O3", color="red", marker="^", markevery=10)
+            plt.plot(x, x_Fe3O4, label="x_Fe3O4", color="purple", marker="x", markevery=10)
+            plt.xlabel("x(m)")
+            plt.ylabel("Fraction of Iron Species")
+            plt.legend()
+            plt.show()
+        
 #
-#            plot_separate_figures(x, cH2, cH2O)
-#            #plot_separate_figures_solid(x, x_Fe, x_FeO)
+            plot_separate_figures(x, cH2, cH2O)
+            
+            plt.figure()
+            plt.title("porosity")
+            plt.plot(x,eps)
+            plt.xlabel("x(m)")
+            plt.ylabel("porosity")
+            plt.show()
+
+            plt.figure()
+            plt.title("reaction rate")
+            plt.plot(x,impl_rxnsrc[0,:])
+            plt.xlabel("x(m)")
+            plt.ylabel("reaction rate")
+            plt.show()
+
+            
             
         
             
@@ -757,9 +879,21 @@ if(__name__ == "__main__"):
     plt.legend()
     plt.show()
 
+    plt.figure()
+    plt.title("porosity")
+    plt.plot(x,eps)
+    plt.xlabel("x(m)")
+    plt.ylabel("porosity")
+    plt.show()
 
+    plt.figure()
+    plt.title("reaction rate")
+    plt.plot(x,impl_rxnsrc[0,:])
+    plt.xlabel("x(m)")
+    plt.ylabel("reaction rate")
+    plt.show()
     
-    #plot (f v.s. t)
+        #plot (f v.s. t)
     plt.plot(time_values, f_values, label='PDE_Conversion Degree', color='b')
   #  plt.plot(time_values, f_mean, label='PDE_Conversion Degree', color='b')
     plt.plot(time_values, scm_f, label='SCM_Conversion Degree', color='g')
@@ -770,15 +904,10 @@ if(__name__ == "__main__"):
     plt.grid(True)
     plt.show()
 
-    plt.figure()
-    plt.title("eps")
-    plt.plot(x,eps)
-    plt.show()
-
     print("tau_gas_film:", tau_gas_film)
     print("tau_ash_layer:", tau_ash_layer)
     print("tau_reaction:", tau_reaction)
 
 
-    np.savetxt("conversion_vs_time.txt", np.column_stack((time_values, scm_f,f_mean)), delimiter="  ", header="Time(s)  Conversion", comments='')
+   # np.savetxt("conversion_vs_time.txt", np.column_stack((time_values, scm_f,f_mean)), delimiter="  ", header="Time(s)  Conversion", comments='')
 
